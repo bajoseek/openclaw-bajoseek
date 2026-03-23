@@ -1,0 +1,12 @@
+{
+  "id": "bajoseek",
+  "channels": ["bajoseek"],
+  "providerAuthEnvVars": {
+    "bajoseek": ["BAJOSEEK_BOT_ID", "BAJOSEEK_TOKEN"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

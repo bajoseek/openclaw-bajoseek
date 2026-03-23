@@ -1,0 +1,53 @@
+{
+  "name": "@bajoseek/openclaw-bajoseek",
+  "version": "0.1.0",
+  "description": "Bajoseek channel plugin for OpenClaw — connect AI assistants to Bajoseek via WebSocket",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bajoseek/openclaw-bajoseek.git"
+  },
+  "keywords": [
+    "openclaw",
+    "bajoseek",
+    "channel-plugin",
+    "websocket",
+    "ai",
+    "chatbot"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "index.ts",
+    "tsconfig.json",
+    "openclaw.plugin.json"
+  ],
+  "openclaw": {
+    "id": "bajoseek",
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "build": "tsc || true",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
