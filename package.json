@@ -1,6 +1,6 @@
 {
-  "name": "@bajoseek/openclaw-bajoseek",
-  "version": "0.1.0",
+  "name": "@bajoseek/bajoseek",
+  "version": "0.1.1",
   "description": "Bajoseek channel plugin for OpenClaw — connect AI assistants to Bajoseek via WebSocket",
   "type": "module",
   "main": "dist/index.js",
@@ -22,6 +22,7 @@
     "dist",
     "src",
     "index.ts",
+    "setup-entry.ts",
     "tsconfig.json",
     "openclaw.plugin.json"
   ],
@@ -29,7 +30,16 @@
     "id": "bajoseek",
     "extensions": [
       "./index.ts"
-    ]
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "bajoseek",
+      "label": "Bajoseek",
+      "selectionLabel": "Bajoseek",
+      "docsPath": "/docs/channels/bajoseek",
+      "blurb": "Connect to Bajoseek App via WebSocket",
+      "order": 60
+    }
   },
   "scripts": {
     "build": "tsc || true",

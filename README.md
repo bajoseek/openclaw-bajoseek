@@ -1,0 +1,157 @@
+# Bajoseek OpenClaw Plugin
+
+A channel plugin for [OpenClaw](https://github.com/openclaw/openclaw) that connects AI assistants to the Bajoseek App via WebSocket.
+
+## Features
+
+- **Real-time WebSocket Communication** — Bidirectional messaging between OpenClaw AI agents and Bajoseek users
+- **Block Streaming** — Progressive chunked response delivery for better responsiveness on long replies
+- **Auto-Reconnect** — Exponential backoff reconnection (1s → 2s → 5s → 10s → 30s → 60s)
+- **Per-User Message Queue** — Isolated queues per user (max 20 messages/user, 10 concurrent users)
+- **Heartbeat** — Periodic ping every 30 seconds to keep connections alive
+- **Multi-Account** — Run multiple Bajoseek bot accounts from a single OpenClaw instance
+- **3-Level Token Fallback** — Config file → token file → environment variable
+
+## Quick Start
+
+### Install
+
+```bash
+npm install @bajoseek/openclaw-bajoseek
+```
+
+### Configure
+
+Set environment variables:
+
+```bash
+export BAJOSEEK_BOT_ID="your-bot-id"
+export BAJOSEEK_TOKEN="your-token"
+```
+
+Or add to your OpenClaw config file:
+
+```yaml
+channels:
+  bajoseek:
+    enabled: true
+    botId: "your-bot-id"
+    token: "your-token"
+```
+
+### Interactive Setup
+
+Run the OpenClaw onboard wizard — it will guide you through BotID, Token, WebSocket URL, and block streaming options.
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description |
+|---|---|
+| `BAJOSEEK_BOT_ID` | Bot ID (default account only) |
+| `BAJOSEEK_TOKEN` | Auth token (default account only) |
+
+### Config Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Enable/disable channel |
+| `botId` | string | — | Bajoseek bot ID |
+| `token` | string | — | Auth token |
+| `tokenFile` | string | — | Path to file containing token |
+| `wsUrl` | string | `wss://ws.bajoseek.com` | WebSocket server URL |
+| `allowFrom` | string[] | `["*"]` | Message source allowlist |
+| `blockStreaming` | boolean | `true` | Enable chunked streaming |
+| `name` | string | — | Account display name |
+
+### Multi-Account
+
+```yaml
+channels:
+  bajoseek:
+    enabled: true
+    botId: "default-bot-id"
+    token: "default-token"
+    accounts:
+      staging:
+        botId: "staging-bot-id"
+        token: "staging-token"
+        wsUrl: "wss://staging.bajoseek.com"
+      production:
+        botId: "prod-bot-id"
+        tokenFile: "/secrets/bajoseek-token"
+```
+
+## WebSocket Protocol
+
+### Inbound (Server → Plugin)
+
+| Type | Fields | Description |
+|---|---|---|
+| `message` | `messageId`, `userId`, `conversationId`, `text`, `timestamp` | User message |
+| `pong` | — | Heartbeat response |
+| `error` | `code`, `message` | Server error |
+
+### Outbound (Plugin → Server)
+
+| Type | Fields | Description |
+|---|---|---|
+| `stream_chunk` | `conversationId`, `text` | Partial response (non-final) |
+| `stream_end` | `conversationId`, `text` | Final response block |
+| `reply` | `to`, `text`, `replyToId?` | Direct reply message |
+| `ping` | — | Heartbeat |
+
+### Authentication
+
+WebSocket upgrade headers:
+- `X-Bot-Id: <botId>`
+- `Authorization: Bearer <token>`
+
+### Target Address Format
+
+```
+bajoseek:user:<userId>
+```
+
+Accepted inputs: `bajoseek:user:alice`, `user:alice`, or `alice`.
+
+## Channel Capabilities
+
+| Capability | Support |
+|---|---|
+| Direct Messages | Yes |
+| Group Chat | No |
+| Media | No |
+| Reactions | No |
+| Threads | No |
+| Block Streaming | Yes |
+
+## Development
+
+### Build
+
+```bash
+npm run build    # Compile TypeScript
+npm run dev      # Watch mode
+```
+
+### Project Structure
+
+```
+index.ts              # Plugin entry point
+setup-entry.ts        # Setup-only entry point
+src/
+  channel.ts          # ChannelPlugin implementation
+  gateway.ts          # WebSocket connection & message dispatch
+  outbound.ts         # Message sending utilities
+  config.ts           # Account config resolution
+  runtime.ts          # Plugin runtime singleton
+  setup-core.ts       # CLI setup adapter
+  setup-surface.ts    # Interactive setup wizard
+  types.ts            # TypeScript interfaces
+```
+
+## License
+
+MIT
