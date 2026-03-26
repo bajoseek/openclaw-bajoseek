@@ -1,6 +1,17 @@
 # Bajoseek OpenClaw 插件
 
+[English](./README.md)
+
 [OpenClaw](https://github.com/openclaw/openclaw) 的频道插件，通过 WebSocket 将 AI 助手连接到 Bajoseek App。
+
+## 兼容性
+
+| OpenClaw 版本 | 支持情况 |
+|---|---|
+| 3.24+（新 Plugin SDK） | 完全支持——使用 `ChannelSetupWizard` |
+| 3.13（旧 Plugin SDK） | 完全支持——使用 `ChannelOnboardingAdapter` |
+
+插件在运行时自动检测 OpenClaw 版本，加载对应的配置适配器。
 
 ## 功能特性
 
@@ -17,7 +28,7 @@
 ### 安装
 
 ```bash
-npm install @bajoseek/openclaw-bajoseek
+npm install @bajoseek/bajoseek
 ```
 
 ### 配置
@@ -139,16 +150,18 @@ npm run dev      # 监听模式
 ### 项目结构
 
 ```
-index.ts              # 插件入口
-setup-entry.ts        # Setup-only 入口
+index.ts              # 插件入口（register 模式，兼容新旧版本）
+setup-entry.ts        # Setup 专用入口
 src/
-  channel.ts          # ChannelPlugin 实现
+  channel.ts          # ChannelPlugin 实现（动态加载 setupWizard / onboarding）
   gateway.ts          # WebSocket 连接与消息分发
   outbound.ts         # 消息发送工具
-  config.ts           # 账户配置解析
+  config.ts           # 账户配置解析（三级 Token 回退）
   runtime.ts          # 插件运行时单例
-  setup-core.ts       # CLI setup 适配器
-  setup-surface.ts    # 交互式配置向导
+  onboarding.ts       # 旧版 ChannelOnboardingAdapter（OpenClaw 3.13）
+  setup-surface.ts    # 新版交互式 ChannelSetupWizard（OpenClaw 3.24+）
+  setup-core.ts       # CLI 配置适配器（OpenClaw 3.24+）
+  sdk-compat.ts       # SDK 兼容层（本地配置辅助函数）
   types.ts            # TypeScript 类型定义
 ```
 

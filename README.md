@@ -1,6 +1,17 @@
 # Bajoseek OpenClaw Plugin
 
+[中文文档](./README_zh.md)
+
 A channel plugin for [OpenClaw](https://github.com/openclaw/openclaw) that connects AI assistants to the Bajoseek App via WebSocket.
+
+## Compatibility
+
+| OpenClaw Version | Support |
+|---|---|
+| 3.24+ (new Plugin SDK) | Fully supported — uses `ChannelSetupWizard` |
+| 3.13 (legacy Plugin SDK) | Fully supported — uses `ChannelOnboardingAdapter` |
+
+The plugin detects the OpenClaw version at runtime and automatically loads the appropriate setup adapter.
 
 ## Features
 
@@ -17,7 +28,7 @@ A channel plugin for [OpenClaw](https://github.com/openclaw/openclaw) that conne
 ### Install
 
 ```bash
-npm install @bajoseek/openclaw-bajoseek
+npm install @bajoseek/bajoseek
 ```
 
 ### Configure
@@ -139,16 +150,18 @@ npm run dev      # Watch mode
 ### Project Structure
 
 ```
-index.ts              # Plugin entry point
+index.ts              # Plugin entry point (register pattern, compatible with both versions)
 setup-entry.ts        # Setup-only entry point
 src/
-  channel.ts          # ChannelPlugin implementation
+  channel.ts          # ChannelPlugin implementation (dynamically loads setupWizard / onboarding)
   gateway.ts          # WebSocket connection & message dispatch
   outbound.ts         # Message sending utilities
-  config.ts           # Account config resolution
+  config.ts           # Account config resolution (3-level token fallback)
   runtime.ts          # Plugin runtime singleton
-  setup-core.ts       # CLI setup adapter
-  setup-surface.ts    # Interactive setup wizard
+  onboarding.ts       # Legacy ChannelOnboardingAdapter (OpenClaw 3.13)
+  setup-surface.ts    # Interactive ChannelSetupWizard (OpenClaw 3.24+)
+  setup-core.ts       # CLI setup adapter (OpenClaw 3.24+)
+  sdk-compat.ts       # SDK compatibility layer (local config helpers)
   types.ts            # TypeScript interfaces
 ```
 
