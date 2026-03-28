@@ -28,7 +28,7 @@ The plugin detects the OpenClaw version at runtime and automatically loads the a
 ### Install
 
 ```bash
-npm install @bajoseek/bajoseek
+npm install @bajoseek/openclaw-bajoseek
 ```
 
 ### Configure

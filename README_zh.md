@@ -28,7 +28,7 @@
 ### 安装
 
 ```bash
-npm install @bajoseek/bajoseek
+npm install @bajoseek/openclaw-bajoseek
 ```
 
 ### 配置
