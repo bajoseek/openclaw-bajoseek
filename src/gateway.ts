@@ -1,65 +1,57 @@
 /**
- * WebSocket gateway — WebSocket 网关
+ * WebSocket gateway
  *
  * Manages the persistent WebSocket connection to the Bajoseek server.
- * 管理与 Bajoseek 服务端的持久化 WebSocket 连接。
  *
- * Features / 功能特性:
+ * Features
  *   - Auto-reconnect with exponential backoff (1s → 2s → 5s → 10s → 30s → 60s)
- *     指数退避自动重连
  *   - Per-user isolated message queues (max 20 msgs/user, 10 concurrent users)
- *     按用户隔离的消息队列（单用户上限 20 条，最多 10 用户并发处理）
  *   - Heartbeat ping every 30 seconds
- *     每 30 秒心跳 ping
  *   - Graceful shutdown via AbortSignal
- *     通过 AbortSignal 优雅关闭
  *   - Block streaming & fallback chunked delivery
- *     分块流式回复与回退分块投递
  */
 import WebSocket from "ws";
-import type { OpenClawConfig } from "openclaw/plugin-sdk";
-import type { ResolvedBajoseekAccount, InboundUserMessage } from "./types.js";
-import { getBajoseekRuntime } from "./runtime.js";
-import { sendStreamChunk, sendStreamEnd, sendChunkedEnd } from "./outbound.js";
+import type {OpenClawConfig} from "openclaw/plugin-sdk";
+import type {InboundUserMessage, ResolvedBajoseekAccount} from "./types.js";
+import {getBajoseekRuntime} from "./runtime.js";
+import {sendChunkedEnd, sendStreamChunk, sendStreamEnd} from "./outbound.js";
 
 /**
  * Fallback chunk size (chars) when block streaming is disabled.
- * 非 block streaming 模式下的回退分块大小（字符数）。
  */
 const FALLBACK_CHUNK_SIZE = 10000;
 
 /* ════════════════════════════════════════════════════════════
- *  Global connection pool / 全局连接池
+ *  Global connection pool
  * ════════════════════════════════════════════════════════════ */
 
-/** Map of accountId → active WebSocket. / accountId → 活跃 WebSocket 的映射。 */
+/** Map of accountId → active WebSocket. */
 const wsConnections = new Map<string, WebSocket>();
 
 /**
  * Get the active WebSocket for an account (if any).
- * 获取某账户的活跃 WebSocket（如有）。
  */
 export function getWsConnection(accountId: string): WebSocket | undefined {
   return wsConnections.get(accountId);
 }
 
 /* ════════════════════════════════════════════════════════════
- *  Gateway context / 网关上下文
+ *  Gateway context
  * ════════════════════════════════════════════════════════════ */
 
-/** Parameters for starting the gateway. / 启动网关的参数。 */
+/** Parameters for starting the gateway. /*/
 export interface GatewayContext {
-  /** Resolved account to connect. / 要连接的已解析账户。 */
+  /** Resolved account to connect. */
   account: ResolvedBajoseekAccount;
-  /** Signal to trigger graceful shutdown. / 触发优雅关闭的信号。 */
+  /** Signal to trigger graceful shutdown. */
   abortSignal: AbortSignal;
-  /** OpenClaw configuration. / OpenClaw 配置。 */
+  /** OpenClaw configuration. */
   cfg: OpenClawConfig;
-  /** Callback fired when the WebSocket is ready. / WebSocket 就绪时的回调。 */
+  /** Callback fired when the WebSocket is ready. */
   onReady?: () => void;
-  /** Callback fired on connection errors. / 连接错误时的回调。 */
+  /** Callback fired on connection errors. */
   onError?: (error: Error) => void;
-  /** Logger instance. / 日志实例。 */
+  /** Logger instance. */
   log?: {
     info: (msg: string) => void;
     error: (msg: string) => void;
@@ -68,13 +60,13 @@ export interface GatewayContext {
 }
 
 /* ════════════════════════════════════════════════════════════
- *  Per-user message queue / 按用户隔离的消息队列
+ *  Per-user message queue
  * ════════════════════════════════════════════════════════════ */
 
-/** Max queued messages per user. / 单用户最大排队消息数。 */
+/** Max queued messages per user. */
 const PER_USER_QUEUE_SIZE = 20;
 
-/** Max users processed concurrently. / 最大并发处理用户数。 */
+/** Max users processed concurrently. */
 const MAX_CONCURRENT_USERS = 10;
 
 interface QueuedMessage {
@@ -83,15 +75,13 @@ interface QueuedMessage {
 }
 
 /* ════════════════════════════════════════════════════════════
- *  startGateway — main entry / 网关主入口
+ *  startGateway — main entry
  * ════════════════════════════════════════════════════════════ */
 
 /**
  * Start the WebSocket gateway with auto-reconnect.
- * 启动带自动重连的 WebSocket 网关。
  *
  * Runs a connect loop until the `abortSignal` fires.
- * 运行连接循环直到 `abortSignal` 触发。
  */
 export async function startGateway(ctx: GatewayContext): Promise<void> {
   const { account, abortSignal, cfg, onReady, onError, log } = ctx;
@@ -106,7 +96,6 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
   // Listen for abort signal to shut down gracefully.
-  // 监听 abort 信号以优雅关闭。
   abortSignal.addEventListener("abort", () => {
     isAborted = true;
     if (heartbeatInterval) {
@@ -121,13 +110,12 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
     log?.info(`[bajoseek:${account.accountId}] Gateway shut down via abort signal`);
   });
 
-  // Per-user message queues. / 按用户的消息队列。
+  // Per-user message queues.
   const userQueues = new Map<string, QueuedMessage[]>();
   const activeUsers = new Set<string>();
 
   /**
    * Enqueue an inbound message into the user's queue.
-   * 将收到的消息入队到对应用户的队列。
    */
   const enqueueMessage = (msg: QueuedMessage): void => {
     const peerId = `dm:${msg.event.userId}`;
@@ -137,7 +125,7 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
       userQueues.set(peerId, queue);
     }
 
-    // Drop oldest if queue full. / 队列满时丢弃最旧消息。
+    // Drop oldest if queue full.
     if (queue.length >= PER_USER_QUEUE_SIZE) {
       queue.shift();
       log?.error(`[bajoseek:${account.accountId}] Per-user queue full for ${peerId}, dropping oldest`);
@@ -149,7 +137,6 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
 
   /**
    * Process queued messages for a specific user sequentially.
-   * 按顺序处理指定用户的排队消息。
    */
   const drainUserQueue = async (peerId: string): Promise<void> => {
     if (activeUsers.has(peerId) || activeUsers.size >= MAX_CONCURRENT_USERS) {
@@ -170,7 +157,7 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
       }
     } finally {
       activeUsers.delete(peerId);
-      // Try draining other waiting users. / 尝试排空其他等待中的用户。
+      // Try draining other waiting users.
       for (const [pid, q] of userQueues) {
         if (q.length > 0 && !activeUsers.has(pid)) {
           drainUserQueue(pid);
@@ -179,14 +166,14 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
     }
   };
 
-  /* ── Handle a single inbound message / 处理单条入站消息 ── */
+  /* ── Handle a single inbound message ── */
   const handleInboundMessage = async (msg: QueuedMessage): Promise<void> => {
     const { event } = msg;
     const pluginRuntime = getBajoseekRuntime();
 
     log?.info(`[bajoseek:${account.accountId}] Processing message from userId=${event.userId}, text=${event.text.slice(0, 100)}`);
 
-    // Build addressing info. / 构建地址信息。
+    // Build addressing info.
     const fromAddress = `bajoseek:user:${event.userId}`;
     const toAddress = `bajoseek:bot:${account.botId}`;
     const sessionKey = `bajoseek:dm:${event.userId}:${account.accountId}:${event.conversationId}`;
@@ -195,7 +182,6 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
     const agentBody = event.text;
 
     // Construct the inbound context payload for the OpenClaw reply pipeline.
-    // 构造 OpenClaw 回复管线的入站上下文载荷。
     const ctxPayload = pluginRuntime.channel.reply.finalizeInboundContext({
       Body: body,
       BodyForAgent: agentBody,
@@ -225,7 +211,7 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
       let pendingText: string | null = null;
       let receivedBlocks = false;
 
-      // Read blockStreaming config. / 读取 blockStreaming 配置。
+      // Read blockStreaming config.
       const blockStreamingCfg = account.config?.blockStreaming;
       const replyOptions: Record<string, unknown> = {};
       if (typeof blockStreamingCfg === "boolean") {
@@ -233,7 +219,6 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
       }
 
       // Dispatch the reply through OpenClaw's block dispatcher.
-      // 通过 OpenClaw 的块分发器分发回复。
       const dispatchPromise = pluginRuntime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
         ctx: ctxPayload,
         cfg,
@@ -242,7 +227,6 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
           responsePrefix: messagesConfig.responsePrefix,
           /**
            * Delivery callback — called for each output block/final.
-           * 投递回调——每个输出块/最终结果都会调用。
            */
           deliver: async (payload: { text?: string }, info: { kind: string }) => {
             hasResponse = true;
@@ -250,7 +234,7 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
             const text = payload.text ?? "";
             log?.info(`[bajoseek:${account.accountId}] deliver: kind=${info.kind}, text.length=${text.length}, text.preview=${JSON.stringify(text.slice(0, 200))}`);
 
-            // Skip tool intermediate results. / 跳过 tool 中间结果。
+            // Skip tool intermediate results.
             if (info.kind === "tool") {
               log?.info(`[bajoseek:${account.accountId}] Skipping tool result, text.preview=${JSON.stringify(text.slice(0, 500))}`);
               return;
@@ -266,7 +250,6 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
 
             if (info.kind === "block") {
               // Block streaming mode: each block is an incremental chunk.
-              // 分块流式模式：每个 block 是增量分块。
               receivedBlocks = true;
               if (pendingText !== null) {
                 sendStreamChunk(ws, conversationId, pendingText);
@@ -279,13 +262,11 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
             if (receivedBlocks) {
               // In block streaming mode, the final contains the complete text
               // which was already delivered via blocks — skip to avoid duplication.
-              // 分块模式下 final 包含完整文本，内容已通过 blocks 送达——跳过以避免重复。
               log?.info(`[bajoseek:${account.accountId}] Block streaming active, skipping final (content already delivered via blocks)`);
               return;
             }
 
             // Non-block-streaming: may receive multiple finals (multi-step agent calls).
-            // 非分块模式：可能收到多次 final（Agent 多步调用）。
             if (pendingText !== null) {
               sendStreamChunk(ws, conversationId, pendingText);
             }
@@ -296,41 +277,39 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
 
       await dispatchPromise;
 
-      // Send the final response. / 发送最终回复。
+      // Send the final response.
       const ws = wsConnections.get(account.accountId);
       if (ws && ws.readyState === WebSocket.OPEN) {
         if (!hasResponse) {
-          // No response generated — send error hint. / 未生成回复——发送错误提示。
+          // No response generated — send error hint.
           log?.error(`[bajoseek:${account.accountId}] No response from AI for messageId=${event.messageId}`);
-          sendStreamEnd(ws, conversationId, "[系统提示] AI 未生成回复，请稍后重试");
+          sendStreamEnd(ws, conversationId, "[Error] AI did not generate a reply, please try again later");
         } else if (receivedBlocks) {
           // Block streaming: framework already chunked — send stream_end directly.
-          // 分块模式：框架已分块——直接发送 stream_end。
           sendStreamEnd(ws, conversationId, pendingText ?? "");
           log?.info(`[bajoseek:${account.accountId}] Sent stream_end (block streaming) for conversationId=${conversationId}`);
         } else {
           // Non-block-streaming: split by FALLBACK_CHUNK_SIZE ourselves.
-          // 非分块模式：我们自行按 FALLBACK_CHUNK_SIZE 拆分。
           sendChunkedEnd(ws, conversationId, pendingText ?? "", FALLBACK_CHUNK_SIZE);
           log?.info(`[bajoseek:${account.accountId}] Sent chunked stream_end for conversationId=${conversationId}`);
         }
       }
     } catch (err) {
       log?.error(`[bajoseek:${account.accountId}] Error processing message: ${err}`);
-      // Send error hint to server. / 向服务端发送错误提示。
+      // Send error hint to server.
       try {
         const ws = wsConnections.get(account.accountId);
         if (ws && ws.readyState === WebSocket.OPEN) {
           const conversationId = event.conversationId;
-          sendStreamEnd(ws, conversationId, "[系统提示] 处理消息时出错，请稍后重试");
+          sendStreamEnd(ws, conversationId, "[Error] An error occurred while processing your message, please try again later");
         }
       } catch {
-        // Sending error hint also failed — ignore. / 发送错误提示也失败——忽略。
+        // Sending error hint also failed — ignore.
       }
     }
   };
 
-  /* ── Reconnect backoff schedule / 重连退避策略 ── */
+  /* ── Reconnect backoff schedule ── */
   const BACKOFF_SCHEDULE = [1000, 2000, 5000, 10000, 30000, 60000];
 
   const getBackoffDelay = (): number => {
@@ -341,7 +320,7 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
   const sleep = (ms: number): Promise<void> =>
     new Promise((resolve) => setTimeout(resolve, ms));
 
-  /* ── Connection loop / 连接循环 ── */
+  /* ── Connection loop ── */
   const connect = async (): Promise<void> => {
     while (!isAborted) {
       try {
@@ -359,10 +338,8 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
 
   /**
    * Establish a single WebSocket connection.
-   * 建立一次 WebSocket 连接。
    *
    * Resolves when the connection is closed normally; rejects on handshake failures.
-   * 正常关闭时 resolve；握手失败时 reject。
    */
   const connectOnce = (): Promise<void> => {
     return new Promise<void>((resolve, reject) => {
@@ -384,13 +361,12 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
 
       ws.on("open", () => {
         // Handshake succeeded — connection authenticated.
-        // 握手成功——连接已认证。
         reconnectAttempts = 0;
         wsConnections.set(account.accountId, ws);
         log?.info(`[bajoseek:${account.accountId}] WebSocket connected and authenticated`);
         onReady?.();
 
-        // Start heartbeat. / 启动心跳。
+        // Start heartbeat.
         heartbeatInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "ping" }));
@@ -409,18 +385,18 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
 
         const msgType = parsed.type as string;
 
-        // Handle pong (heartbeat response). / 处理 pong（心跳响应）。
+        // Handle pong (heartbeat response).
         if (msgType === "pong") {
           return;
         }
 
-        // Handle server error notification. / 处理服务端错误通知。
+        // Handle server error notification.
         if (msgType === "error") {
           log?.error(`[bajoseek:${account.accountId}] Server error: code=${parsed.code}, message=${parsed.message}`);
           return;
         }
 
-        // Handle user message. / 处理用户消息。
+        // Handle user message.
         if (msgType === "message") {
           const event: InboundUserMessage = {
             type: "message",
@@ -455,7 +431,7 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
         currentWs = null;
 
         if (!isAborted) {
-          // Normal close — the loop will reconnect. / 正常关闭——循环将重连。
+          // Normal close — the loop will reconnect.
           resolve();
         }
       });
@@ -463,10 +439,9 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
       ws.on("error", (err) => {
         log?.error(`[bajoseek:${account.accountId}] WebSocket error: ${err.message}`);
         // An `error` event is always followed by `close` — no reject here.
-        // `error` 事件后总会触发 `close`——此处不 reject。
       });
 
-      // Handle handshake rejection (e.g. HTTP 401). / 处理握手拒绝（如 HTTP 401）。
+      // Handle handshake rejection (e.g. HTTP 401).
       ws.on("unexpected-response", (_req, res) => {
         const statusCode = res.statusCode;
         log?.error(`[bajoseek:${account.accountId}] WebSocket handshake rejected: HTTP ${statusCode}`);

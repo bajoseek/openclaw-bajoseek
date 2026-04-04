@@ -1,43 +1,34 @@
 /**
- * Interactive setup wizard — 交互式配置向导 (new OpenClaw 3.24+)
+ * Interactive setup wizard (new OpenClaw 3.24+)
  *
  * Implements `ChannelSetupWizard` using helpers from `openclaw/plugin-sdk/setup`.
- * 使用 `openclaw/plugin-sdk/setup` 的辅助函数实现 `ChannelSetupWizard`。
  *
  * This file is only loaded dynamically when the new OpenClaw version is detected.
  * It MUST NOT be statically imported — old OpenClaw does not have `openclaw/plugin-sdk/setup`.
- * 此文件仅在检测到新版 OpenClaw 时通过动态 import 加载。
- * 绝不能静态导入——旧版 OpenClaw 不存在 `openclaw/plugin-sdk/setup`。
  *
- * All user-facing prompts are bilingual: English（中文）.
- * 所有面向用户的提示文本均为双语：English（中文）。
+ * All user-facing prompts are bilingual: English / Chinese.
  */
 import {
-  createStandardChannelSetupStatus,
-  DEFAULT_ACCOUNT_ID,
-  mergeAllowFromEntries,
-  runSingleChannelSecretStep,
-  type ChannelSetupWizard,
-  type OpenClawConfig,
+    type ChannelSetupWizard,
+    createStandardChannelSetupStatus,
+    DEFAULT_ACCOUNT_ID,
+    type OpenClawConfig,
+    runSingleChannelSecretStep,
 } from "openclaw/plugin-sdk/setup";
-import {
-  listBajoseekAccountIds,
-  resolveBajoseekAccount,
-} from "./config.js";
+import {listBajoseekAccountIds, resolveBajoseekAccount,} from "./config.js";
 
 const channel = "bajoseek" as const;
 
-/** Default WebSocket endpoint. / 默认 WebSocket 端点。 */
+/** Default WebSocket endpoint. */
 const DEFAULT_WS_URL = "wss://ws.bajoseek.com";
 
 /**
  * The setup wizard shown during `openclaw onboard` or initial setup.
- * `openclaw onboard` 或初始配置时展示的配置向导。
  */
 export const bajoseekSetupWizard: ChannelSetupWizard = {
   channel,
 
-  /** Status check — determines "configured" vs "needs setup" in the UI. / 状态检查——在 UI 中区分"已配置"和"需要配置"。 */
+  /** Status check — determines "configured" vs "needs setup" in the UI. */
   status: createStandardChannelSetupStatus({
     channelLabel: "Bajoseek",
     configuredLabel: "Configured（已配置）",
@@ -54,7 +45,7 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
       }),
   }),
 
-  /** Intro note shown when the channel is not yet configured. / 频道未配置时显示的介绍信息。 */
+  /** Intro note shown when the channel is not yet configured. */
   introNote: {
     title: "Bajoseek Setup（Bajoseek 配置）",
     lines: [
@@ -70,7 +61,7 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
     },
   },
 
-  /** Shortcut when env vars are detected — skip manual entry. / 检测到环境变量时的快捷方式——跳过手动输入。 */
+  /** Shortcut when env vars are detected — skip manual entry. */
   envShortcut: {
     prompt: "Detected BAJOSEEK_BOT_ID and BAJOSEEK_TOKEN in environment. Use them?（检测到环境变量，是否使用？）",
     isAvailable: ({ cfg, accountId }) => {
@@ -97,18 +88,17 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
     },
   },
 
-  /** No additional credential steps (handled in `finalize`). / 无额外凭证步骤（在 finalize 中处理）。 */
+  /** No additional credential steps (handled in `finalize`). */
   credentials: [],
 
   /**
    * Finalize — the main interactive wizard flow.
-   * Finalize——主交互式向导流程。
    *
-   * Steps / 步骤:
-   *   1. BotID  — prompt or use env / 输入或使用环境变量
-   *   2. Token  — prompt or use env / 输入或使用环境变量
-   *   3. WebSocket URL — optional custom / 可选自定义
-   *   4. Block streaming — enable/disable / 启用/禁用
+   * Steps:
+   *   1. BotID  — prompt or use env
+   *   2. Token  — prompt or use env
+   *   3. WebSocket URL — optional custom
+   *   4. Block streaming — enable/disable
    */
   finalize: async ({ cfg, accountId, prompter }) => {
     let next = cfg;
@@ -156,7 +146,7 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
     });
     next = tokenStep.cfg;
 
-    // ── Step 3: Optional WebSocket URL / 可选 WebSocket 地址 ──
+    // ── Step 3: Optional WebSocket URL ──
     const currentBotId = resolveBajoseekAccount(next, accountId).botId;
     const currentToken = resolveBajoseekAccount(next, accountId).token;
     if (currentBotId && currentToken) {
@@ -181,7 +171,7 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
         next = applyWsUrlToConfig(next, accountId, wsUrl);
       }
 
-      // ── Step 4: Block streaming / 分块流式回复 ──
+      // ── Step 4: Block streaming ──
       const blockStreaming = await prompter.confirm({
         message: "Enable block streaming? Long replies will be sent in chunks for better responsiveness（是否开启分块流式回复？开启后长回复将分段发送，提升响应体验）",
         initialValue: true,
@@ -195,14 +185,12 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
 
 /* ════════════════════════════════════════════════════════════
  *  Config helpers — immutable config patchers
- *  配置辅助函数——不可变配置修补器
  *
  *  Each function returns a new OpenClawConfig with the specified
  *  field written into the bajoseek channel section.
- *  每个函数返回新的 OpenClawConfig，将指定字段写入 bajoseek 频道区段。
  * ════════════════════════════════════════════════════════════ */
 
-/** Write botId into config. / 将 botId 写入配置。 */
+/** Write botId into config. */
 function applyBotIdToConfig(cfg: OpenClawConfig, accountId: string, botId: string): OpenClawConfig {
   if (accountId === DEFAULT_ACCOUNT_ID) {
     return {
@@ -233,7 +221,7 @@ function applyBotIdToConfig(cfg: OpenClawConfig, accountId: string, botId: strin
   } as OpenClawConfig;
 }
 
-/** Write token into config. / 将 token 写入配置。 */
+/** Write token into config. */
 function applyTokenToConfig(cfg: OpenClawConfig, accountId: string, token: string): OpenClawConfig {
   if (accountId === DEFAULT_ACCOUNT_ID) {
     return {
@@ -264,7 +252,7 @@ function applyTokenToConfig(cfg: OpenClawConfig, accountId: string, token: strin
   } as OpenClawConfig;
 }
 
-/** Write wsUrl into config. / 将 wsUrl 写入配置。 */
+/** Write wsUrl into config. */
 function applyWsUrlToConfig(cfg: OpenClawConfig, accountId: string, wsUrl: string): OpenClawConfig {
   if (accountId === DEFAULT_ACCOUNT_ID) {
     return {
@@ -293,7 +281,7 @@ function applyWsUrlToConfig(cfg: OpenClawConfig, accountId: string, wsUrl: strin
   } as OpenClawConfig;
 }
 
-/** Write blockStreaming into config. / 将 blockStreaming 写入配置。 */
+/** Write blockStreaming into config. */
 function applyBlockStreamingToConfig(cfg: OpenClawConfig, accountId: string, blockStreaming: boolean): OpenClawConfig {
   if (accountId === DEFAULT_ACCOUNT_ID) {
     return {

@@ -1,28 +1,23 @@
 /**
- * Legacy onboarding adapter — 旧版 Onboarding 适配器
+ * Legacy onboarding adapter
  *
  * Implements `ChannelOnboardingAdapter` for old OpenClaw (3.13).
- * 为旧版 OpenClaw (3.13) 实现 `ChannelOnboardingAdapter` 接口。
  *
  * This file is loaded dynamically (`await import()`) only when the old-version
  * API is detected. It intentionally avoids importing from `openclaw/plugin-sdk/setup`
  * (which does not exist in old versions).
- * 此文件仅在检测到旧版 API 时通过动态 `import()` 加载。
- * 有意避免从 `openclaw/plugin-sdk/setup` 导入（旧版不存在该子路径）。
  *
- * All user-facing prompts are bilingual: English（中文）.
- * 所有面向用户的提示文本均为双语：English（中文）。
+ * All user-facing prompts are bilingual: English / Chinese.
  *
  * The adapter is typed as `any` to avoid depending on the old-version-only
  * `ChannelOnboardingAdapter` type at compile time.
- * 类型为 `any`，以避免编译时依赖仅旧版才有的 `ChannelOnboardingAdapter` 类型。
  */
-import type { OpenClawConfig } from "openclaw/plugin-sdk";
-import { DEFAULT_ACCOUNT_ID, listBajoseekAccountIds, resolveBajoseekAccount } from "./config.js";
+import type {OpenClawConfig} from "openclaw/plugin-sdk";
+import {DEFAULT_ACCOUNT_ID, listBajoseekAccountIds, resolveBajoseekAccount} from "./config.js";
 
 const channel = "bajoseek" as const;
 
-/** Default WebSocket endpoint. / 默认 WebSocket 端点。 */
+/** Default WebSocket endpoint. */
 const DEFAULT_WS_URL = "wss://ws.bajoseek.com";
 
 export const bajoseekOnboardingAdapter: any = {
@@ -30,10 +25,8 @@ export const bajoseekOnboardingAdapter: any = {
 
   /**
    * Report whether the channel is configured.
-   * 报告频道是否已配置。
    *
    * Returns status lines and a quickstart score used by the OpenClaw onboarding UI.
-   * 返回状态行和快速入门分数，供 OpenClaw Onboarding UI 使用。
    */
   getStatus: async ({ cfg }: { cfg: OpenClawConfig }) => {
     const configured = listBajoseekAccountIds(cfg).some((accountId) => {
@@ -55,14 +48,12 @@ export const bajoseekOnboardingAdapter: any = {
 
   /**
    * Interactive configuration wizard.
-   * 交互式配置向导。
    *
    * Guides the user through 4 steps:
-   * 引导用户完成 4 个步骤：
-   *   1. BotID  — enter or use env var / 输入或使用环境变量
-   *   2. Token  — enter or use env var / 输入或使用环境变量
-   *   3. WebSocket URL — optional custom URL / 可选自定义地址
-   *   4. Block streaming — enable/disable chunked replies / 启用/禁用分块流式回复
+   *   1. BotID  — enter or use env var
+   *   2. Token  — enter or use env var
+   *   3. WebSocket URL — optional custom URL
+   *   4. Block streaming — enable/disable chunked replies
    */
   configure: async ({
     cfg,
@@ -82,7 +73,7 @@ export const bajoseekOnboardingAdapter: any = {
     const hasBotId = Boolean(resolved.config.botId);
     const hasToken = Boolean(resolved.config.token || resolved.config.tokenFile);
 
-    // ── Intro note / 介绍提示 ──
+    // ── Intro note ──
     if (!hasBotId || !hasToken) {
       await prompter.note(
         [
@@ -98,7 +89,7 @@ export const bajoseekOnboardingAdapter: any = {
     // ── Step 1: BotID ──
     const envBotId = process.env.BAJOSEEK_BOT_ID?.trim();
     if (envBotId && !hasBotId) {
-      // Env var detected, offer to use it. / 检测到环境变量，询问是否使用。
+      // Env var detected, offer to use it.
       const useEnv = await prompter.confirm({
         message: "BAJOSEEK_BOT_ID detected. Use env var?（检测到 BAJOSEEK_BOT_ID 环境变量，是否使用？）",
         initialValue: true,
@@ -113,7 +104,7 @@ export const bajoseekOnboardingAdapter: any = {
         next = applyBotIdToConfig(next, accountId, botId);
       }
     } else if (hasBotId) {
-      // Already configured, offer to keep. / 已配置，询问是否保留。
+      // Already configured, offer to keep.
       const keep = await prompter.confirm({
         message: "Bajoseek BotID already configured. Keep it?（BotID 已配置，是否保留？）",
         initialValue: true,
@@ -128,7 +119,7 @@ export const bajoseekOnboardingAdapter: any = {
         next = applyBotIdToConfig(next, accountId, botId);
       }
     } else {
-      // No existing value — prompt for input. / 无现有值——要求输入。
+      // No existing value — prompt for input.
       const botId = String(
         await prompter.text({
           message: "Enter Bajoseek BotID（请输入 Bajoseek BotID）",
@@ -178,7 +169,7 @@ export const bajoseekOnboardingAdapter: any = {
       next = applyTokenToConfig(next, accountId, token);
     }
 
-    // ── Step 3: Optional WebSocket URL / 可选 WebSocket 地址 ──
+    // ── Step 3: Optional WebSocket URL ──
     const currentBotId = resolveBajoseekAccount(next, accountId).botId;
     const currentToken = resolveBajoseekAccount(next, accountId).token;
     if (currentBotId && currentToken) {
@@ -202,7 +193,7 @@ export const bajoseekOnboardingAdapter: any = {
         next = applyWsUrlToConfig(next, accountId, wsUrl);
       }
 
-      // ── Step 4: Block streaming / 分块流式回复 ──
+      // ── Step 4: Block streaming ──
       const blockStreaming = await prompter.confirm({
         message: "Enable block streaming? Long replies will be sent in chunks for better responsiveness（是否开启分块流式回复？开启后长回复将分段发送，提升响应体验）",
         initialValue: true,
@@ -215,7 +206,6 @@ export const bajoseekOnboardingAdapter: any = {
 
   /**
    * Disable the Bajoseek channel.
-   * 禁用 Bajoseek 频道。
    */
   disable: (cfg: OpenClawConfig) => {
     return {
@@ -233,14 +223,12 @@ export const bajoseekOnboardingAdapter: any = {
 
 /* ════════════════════════════════════════════════════════════
  *  Config helpers — shared with setup-surface.ts
- *  配置辅助函数——与 setup-surface.ts 共用
  *
  *  Each function returns a new OpenClawConfig with the specified
  *  field patched into the bajoseek channel section.
- *  每个函数返回一个新的 OpenClawConfig，将指定字段写入 bajoseek 频道区段。
  * ════════════════════════════════════════════════════════════ */
 
-/** Write botId into config. / 将 botId 写入配置。 */
+/** Write botId into config. */
 function applyBotIdToConfig(cfg: OpenClawConfig, accountId: string, botId: string): OpenClawConfig {
   if (accountId === DEFAULT_ACCOUNT_ID) {
     return {
@@ -271,7 +259,7 @@ function applyBotIdToConfig(cfg: OpenClawConfig, accountId: string, botId: strin
   } as OpenClawConfig;
 }
 
-/** Write token into config. / 将 token 写入配置。 */
+/** Write token into config. */
 function applyTokenToConfig(cfg: OpenClawConfig, accountId: string, token: string): OpenClawConfig {
   if (accountId === DEFAULT_ACCOUNT_ID) {
     return {
@@ -302,7 +290,7 @@ function applyTokenToConfig(cfg: OpenClawConfig, accountId: string, token: strin
   } as OpenClawConfig;
 }
 
-/** Write wsUrl into config. / 将 wsUrl 写入配置。 */
+/** Write wsUrl into config. */
 function applyWsUrlToConfig(cfg: OpenClawConfig, accountId: string, wsUrl: string): OpenClawConfig {
   if (accountId === DEFAULT_ACCOUNT_ID) {
     return {
@@ -331,7 +319,7 @@ function applyWsUrlToConfig(cfg: OpenClawConfig, accountId: string, wsUrl: strin
   } as OpenClawConfig;
 }
 
-/** Write blockStreaming into config. / 将 blockStreaming 写入配置。 */
+/** Write blockStreaming into config. */
 function applyBlockStreamingToConfig(cfg: OpenClawConfig, accountId: string, blockStreaming: boolean): OpenClawConfig {
   if (accountId === DEFAULT_ACCOUNT_ID) {
     return {
