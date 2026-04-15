@@ -22,7 +22,7 @@ import {
   resolveDefaultBajoseekAccountId,
 } from "./config.js";
 import {sendText} from "./outbound.js";
-import {startGateway} from "./gateway.js";
+import {startGateway, getWsConnection} from "./gateway.js";
 import {
   applyAccountNameToChannelSection,
   deleteAccountFromConfigSection,
@@ -288,6 +288,36 @@ export const bajoseekPlugin: any = {
           });
         },
       });
+    },
+  },
+
+  /* ── Heartbeat adapter ── */
+  // 健康检查适配器 —— 让 OpenClaw 能探测 WebSocket 连接状态
+  heartbeat: {
+    /**
+     * Check whether the gateway WebSocket is connected and ready.
+     * 检查 WebSocket 网关是否已连接并就绪。
+     */
+    checkReady: async ({ cfg, accountId }: { cfg: OpenClawConfig; accountId?: string | null }) => {
+      const id = accountId ?? DEFAULT_ACCOUNT_ID;
+      const ws = getWsConnection(id);
+      if (ws && ws.readyState === 1 /* WebSocket.OPEN */) {
+        return { ok: true, reason: "WebSocket connected" };
+      }
+      return { ok: false, reason: "WebSocket not connected" };
+    },
+  },
+
+  /* ── Streaming adapter ── */
+  // 流式输出合并参数 —— 控制 block streaming 的合并行为
+  streaming: {
+    blockStreamingCoalesceDefaults: {
+      /** Minimum characters before flushing a coalesced block. */
+      // 合并块的最小字符数
+      minChars: 100,
+      /** Idle time (ms) before flushing a partial block. */
+      // 空闲刷新时间（毫秒）
+      idleMs: 300,
     },
   },
 

@@ -114,6 +114,10 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
   const userQueues = new Map<string, QueuedMessage[]>();
   const activeUsers = new Set<string>();
 
+  // Track active session keys for stop support.
+  // 追踪活跃的 sessionKey，用于支持停止生成。
+  const activeSessionKeys = new Map<string, string>();
+
   /**
    * Enqueue an inbound message into the user's queue.
    */
@@ -177,6 +181,10 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
     const fromAddress = `bajoseek:user:${event.userId}`;
     const toAddress = `bajoseek:bot:${account.botId}`;
     const sessionKey = `bajoseek:dm:${event.userId}:${account.accountId}:${event.conversationId}`;
+
+    // Register active session for stop support.
+    // 注册活跃 session，用于停止生成。
+    activeSessionKeys.set(event.conversationId, sessionKey);
 
     const body = event.text;
     const agentBody = event.text;
@@ -249,24 +257,22 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
             }
 
             if (info.kind === "block") {
-              // Block streaming mode: each block is an incremental chunk.
+              // Block streaming mode: send each block immediately.
+              // 流式模式：每个 block 立即发送。
               receivedBlocks = true;
-              if (pendingText !== null) {
-                sendStreamChunk(ws, conversationId, pendingText);
-              }
-              pendingText = text;
+              sendStreamChunk(ws, conversationId, text);
               return;
             }
 
             // kind === "final"
             if (receivedBlocks) {
-              // In block streaming mode, the final contains the complete text
-              // which was already delivered via blocks — skip to avoid duplication.
-              log?.info(`[bajoseek:${account.accountId}] Block streaming active, skipping final (content already delivered via blocks)`);
+              // Block streaming: final is empty, all text already sent via blocks — skip.
+              // 流式模式下 final 不带文本，内容已通过 block 发送，跳过。
               return;
             }
 
-            // Non-block-streaming: may receive multiple finals (multi-step agent calls).
+            // Non-block-streaming: buffer for chunked delivery at the end.
+            // 非流式模式：缓冲到最后统一分块发送。
             if (pendingText !== null) {
               sendStreamChunk(ws, conversationId, pendingText);
             }
@@ -285,8 +291,9 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
           log?.error(`[bajoseek:${account.accountId}] No response from AI for messageId=${event.messageId}`);
           sendStreamEnd(ws, conversationId, "[Error] AI did not generate a reply, please try again later");
         } else if (receivedBlocks) {
-          // Block streaming: framework already chunked — send stream_end directly.
-          sendStreamEnd(ws, conversationId, pendingText ?? "");
+          // Block streaming: all blocks sent via stream_chunk, send empty stream_end to close.
+          // 流式模式：所有内容已通过 stream_chunk 发出，发空的 stream_end 关闭流。
+          sendStreamEnd(ws, conversationId, "");
           log?.info(`[bajoseek:${account.accountId}] Sent stream_end (block streaming) for conversationId=${conversationId}`);
         } else {
           // Non-block-streaming: split by FALLBACK_CHUNK_SIZE ourselves.
@@ -306,6 +313,10 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
       } catch {
         // Sending error hint also failed — ignore.
       }
+    } finally {
+      // Clean up active session tracking.
+      // 清理活跃 session 追踪。
+      activeSessionKeys.delete(event.conversationId);
     }
   };
 
@@ -413,6 +424,41 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
             accountId: account.accountId,
             event,
           });
+          return;
+        }
+
+        // Handle stop generation request.
+        // 处理客户端停止生成请求。
+        if (msgType === "stop") {
+          const conversationId = parsed.conversationId as string;
+          if (!conversationId) {
+            log?.error(`[bajoseek:${account.accountId}] Stop request missing conversationId`);
+            return;
+          }
+
+          const sessionKey = activeSessionKeys.get(conversationId);
+          if (!sessionKey) {
+            log?.info(`[bajoseek:${account.accountId}] Stop requested but no active session for conversationId=${conversationId}`);
+            return;
+          }
+
+          log?.info(`[bajoseek:${account.accountId}] Stop requested for conversationId=${conversationId}, sessionKey=${sessionKey}`);
+
+          try {
+            const pluginRuntime = getBajoseekRuntime();
+            // Try runtime abort methods.
+            // 尝试通过 runtime 中止回复。
+            const reply = pluginRuntime.channel?.reply;
+            if (typeof reply?.abortReplyRunBySessionId === "function") {
+              reply.abortReplyRunBySessionId(sessionKey);
+            } else if (typeof reply?.abort === "function") {
+              reply.abort(sessionKey);
+            } else {
+              log?.error(`[bajoseek:${account.accountId}] No abort method available on runtime`);
+            }
+          } catch (err) {
+            log?.error(`[bajoseek:${account.accountId}] Failed to abort session: ${err}`);
+          }
           return;
         }
 
