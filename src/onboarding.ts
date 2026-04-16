@@ -13,7 +13,7 @@
  * `ChannelOnboardingAdapter` type at compile time.
  */
 import type {OpenClawConfig} from "openclaw/plugin-sdk";
-import {DEFAULT_ACCOUNT_ID, listBajoseekAccountIds, resolveBajoseekAccount} from "./config.js";
+import {DEFAULT_ACCOUNT_ID, listBajoseekAccountIds, resolveBajoseekAccount, testBajoseekConnection} from "./config.js";
 
 const channel = "bajoseek" as const;
 
@@ -191,6 +191,14 @@ export const bajoseekOnboardingAdapter: any = {
           }),
         ).trim();
         next = applyWsUrlToConfig(next, accountId, wsUrl);
+
+        // ws:// 安全警告
+        if (wsUrl.startsWith("ws://")) {
+          await prompter.note(
+            "WARNING: Using unencrypted ws:// — credentials will be transmitted in plaintext. Use wss:// in production.（警告：使用了未加密的 ws:// 连接，凭据将以明文传输。生产环境请使用 wss://）",
+            "Security Warning（安全警告）",
+          );
+        }
       }
 
       // ── Step 4: Block streaming ──
@@ -199,6 +207,46 @@ export const bajoseekOnboardingAdapter: any = {
         initialValue: true,
       });
       next = applyBlockStreamingToConfig(next, accountId, blockStreaming);
+    }
+
+    // ── Step 5: Validate connection ──
+    // 校验 botId 和 token 是否能成功连接到 Bajoseek 服务器。
+    const finalAccount = resolveBajoseekAccount(next, accountId);
+    if (finalAccount.botId && finalAccount.token) {
+      let validated = false;
+      while (!validated) {
+        const result = await testBajoseekConnection({
+          botId: finalAccount.botId,
+          token: finalAccount.token,
+          wsUrl: finalAccount.wsUrl,
+        });
+
+        if (result.ok) {
+          await prompter.note(
+            "Connection test passed — botId and token are valid（连接测试通过 —— botId 和 token 有效）",
+            "Bajoseek Validation（凭据校验）",
+          );
+          validated = true;
+        } else {
+          await prompter.note(
+            `Connection test failed: ${result.error}\n（连接测试失败，请检查配置）`,
+            "Bajoseek Validation Failed（凭据校验失败）",
+          );
+          const retry = await prompter.confirm({
+            message: "Retry with different credentials? Select 'No' to save config anyway（是否重新输入凭据？选否则保留当前配置）",
+            initialValue: true,
+          });
+          if (!retry) {
+            validated = true;
+          } else {
+            await prompter.note(
+              "Please re-run the setup wizard to update your credentials（请重新运行 setup 向导以更新凭据）",
+              "Hint（提示）",
+            );
+            validated = true;
+          }
+        }
+      }
     }
 
     return { cfg: next, accountId };

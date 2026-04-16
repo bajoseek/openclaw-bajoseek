@@ -11,6 +11,7 @@
 import type {BajoseekAccountConfig, ResolvedBajoseekAccount} from "./types.js";
 import type {OpenClawConfig} from "openclaw/plugin-sdk";
 import * as fs from "node:fs";
+import WebSocket from "ws";
 
 /** Sentinel account ID for the top-level (non-sub-account) config. */
 export const DEFAULT_ACCOUNT_ID = "default";
@@ -208,4 +209,82 @@ export function applyBajoseekAccountConfig(
   }
 
   return next;
+}
+
+/* ════════════════════════════════════════════════════════════
+ *  Credential validation
+ *
+ *  Opens a temporary WebSocket connection to verify that botId
+ *  and token are accepted by the Bajoseek server.
+ * ════════════════════════════════════════════════════════════ */
+
+/** Result of a connection test. */
+export interface ConnectionTestResult {
+  ok: boolean;
+  error?: string;
+}
+
+/** Timeout for the validation handshake (ms). */
+const TEST_CONNECTION_TIMEOUT = 10_000;
+
+/**
+ * Test whether botId and token are accepted by the Bajoseek server.
+ *
+ * 通过建立一次临时 WebSocket 连接来校验 botId 和 token 是否有效。
+ * 握手成功后立即关闭连接。
+ *
+ * @param opts.botId  — Bot ID to authenticate with
+ * @param opts.token  — Auth token
+ * @param opts.wsUrl  — WebSocket URL (e.g. wss://ws.bajoseek.com)
+ * @returns `{ ok: true }` on success, `{ ok: false, error }` on failure
+ */
+export function testBajoseekConnection(opts: {
+  botId: string;
+  token: string;
+  wsUrl: string;
+}): Promise<ConnectionTestResult> {
+  const { botId, token, wsUrl } = opts;
+  const endpoint = `${wsUrl.replace(/\/+$/, "")}/ws/bot`;
+
+  return new Promise<ConnectionTestResult>((resolve) => {
+    let settled = false;
+    const settle = (result: ConnectionTestResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch { /* ignore */ }
+      resolve(result);
+    };
+
+    // Timeout guard.
+    const timer = setTimeout(() => {
+      settle({ ok: false, error: "Connection timed out（连接超时）" });
+    }, TEST_CONNECTION_TIMEOUT);
+
+    const ws = new WebSocket(endpoint, {
+      headers: {
+        "X-Bot-Id": botId,
+        "Authorization": `Bearer ${token}`,
+      },
+    });
+
+    ws.on("open", () => {
+      // Handshake succeeded — credentials are valid.
+      // 握手成功 —— 凭据有效。
+      settle({ ok: true });
+    });
+
+    ws.on("unexpected-response", (_req, res) => {
+      const code = res.statusCode;
+      if (code === 401) {
+        settle({ ok: false, error: "Authentication failed (HTTP 401): invalid botId or token（认证失败：botId 或 token 无效）" });
+      } else {
+        settle({ ok: false, error: `Server rejected connection (HTTP ${code})（服务端拒绝连接）` });
+      }
+    });
+
+    ws.on("error", (err) => {
+      settle({ ok: false, error: `Connection error: ${err.message}（连接错误）` });
+    });
+  });
 }

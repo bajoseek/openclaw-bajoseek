@@ -21,6 +21,12 @@ import {sendChunkedEnd, sendStreamChunk, sendStreamEnd} from "./outbound.js";
  */
 const FALLBACK_CHUNK_SIZE = 10000;
 
+/**
+ * Max inbound message text length (chars). Messages exceeding this are truncated.
+ * 入站消息最大文本长度，超出部分截断。
+ */
+const MAX_INBOUND_TEXT_LENGTH = 100000;
+
 /* ════════════════════════════════════════════════════════════
  *  Global connection pool
  * ════════════════════════════════════════════════════════════ */
@@ -114,10 +120,6 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
   const userQueues = new Map<string, QueuedMessage[]>();
   const activeUsers = new Set<string>();
 
-  // Track active session keys for stop support.
-  // 追踪活跃的 sessionKey，用于支持停止生成。
-  const activeSessionKeys = new Map<string, string>();
-
   /**
    * Enqueue an inbound message into the user's queue.
    */
@@ -175,16 +177,12 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
     const { event } = msg;
     const pluginRuntime = getBajoseekRuntime();
 
-    log?.info(`[bajoseek:${account.accountId}] Processing message from userId=${event.userId}, text=${event.text.slice(0, 100)}`);
+    log?.info(`[bajoseek:${account.accountId}] Processing message from userId=${event.userId}, length=${event.text.length}`);
 
     // Build addressing info.
     const fromAddress = `bajoseek:user:${event.userId}`;
     const toAddress = `bajoseek:bot:${account.botId}`;
     const sessionKey = `bajoseek:dm:${event.userId}:${account.accountId}:${event.conversationId}`;
-
-    // Register active session for stop support.
-    // 注册活跃 session，用于停止生成。
-    activeSessionKeys.set(event.conversationId, sessionKey);
 
     const body = event.text;
     const agentBody = event.text;
@@ -314,9 +312,7 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
         // Sending error hint also failed — ignore.
       }
     } finally {
-      // Clean up active session tracking.
-      // 清理活跃 session 追踪。
-      activeSessionKeys.delete(event.conversationId);
+      // Reserved for future cleanup.
     }
   };
 
@@ -414,7 +410,7 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
             messageId: parsed.messageId as string,
             userId: parsed.userId as string,
             conversationId: parsed.conversationId as string,
-            text: parsed.text as string,
+            text: ((parsed.text as string) ?? "").slice(0, MAX_INBOUND_TEXT_LENGTH),
             timestamp: (parsed.timestamp as number) || Date.now(),
           };
 
@@ -424,41 +420,6 @@ export async function startGateway(ctx: GatewayContext): Promise<void> {
             accountId: account.accountId,
             event,
           });
-          return;
-        }
-
-        // Handle stop generation request.
-        // 处理客户端停止生成请求。
-        if (msgType === "stop") {
-          const conversationId = parsed.conversationId as string;
-          if (!conversationId) {
-            log?.error(`[bajoseek:${account.accountId}] Stop request missing conversationId`);
-            return;
-          }
-
-          const sessionKey = activeSessionKeys.get(conversationId);
-          if (!sessionKey) {
-            log?.info(`[bajoseek:${account.accountId}] Stop requested but no active session for conversationId=${conversationId}`);
-            return;
-          }
-
-          log?.info(`[bajoseek:${account.accountId}] Stop requested for conversationId=${conversationId}, sessionKey=${sessionKey}`);
-
-          try {
-            const pluginRuntime = getBajoseekRuntime();
-            // Try runtime abort methods.
-            // 尝试通过 runtime 中止回复。
-            const reply = pluginRuntime.channel?.reply;
-            if (typeof reply?.abortReplyRunBySessionId === "function") {
-              reply.abortReplyRunBySessionId(sessionKey);
-            } else if (typeof reply?.abort === "function") {
-              reply.abort(sessionKey);
-            } else {
-              log?.error(`[bajoseek:${account.accountId}] No abort method available on runtime`);
-            }
-          } catch (err) {
-            log?.error(`[bajoseek:${account.accountId}] Failed to abort session: ${err}`);
-          }
           return;
         }
 

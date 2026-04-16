@@ -8,14 +8,9 @@
  *
  * All user-facing prompts are bilingual: English / Chinese.
  */
-import {
-    type ChannelSetupWizard,
-    createStandardChannelSetupStatus,
-    DEFAULT_ACCOUNT_ID,
-    type OpenClawConfig,
-    runSingleChannelSecretStep,
-} from "openclaw/plugin-sdk/setup";
-import {listBajoseekAccountIds, resolveBajoseekAccount,} from "./config.js";
+// @ts-ignore — peer dependency, not available at build time
+import { type ChannelSetupWizard, createStandardChannelSetupStatus, DEFAULT_ACCOUNT_ID, type OpenClawConfig, runSingleChannelSecretStep } from "openclaw/plugin-sdk/setup";
+import {listBajoseekAccountIds, resolveBajoseekAccount, testBajoseekConnection} from "./config.js";
 
 const channel = "bajoseek" as const;
 
@@ -38,7 +33,7 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
     configuredScore: 1,
     unconfiguredScore: 20,
     includeStatusLine: true,
-    resolveConfigured: ({ cfg }) =>
+    resolveConfigured: ({ cfg }: { cfg: any }) =>
       listBajoseekAccountIds(cfg).some((accountId) => {
         const account = resolveBajoseekAccount(cfg, accountId);
         return Boolean(account.botId && account.token);
@@ -55,7 +50,7 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
       `Default WebSocket URL: ${DEFAULT_WS_URL}（默认 WebSocket 地址）`,
       "You can configure a custom URL (e.g. for testing) in the next step（如需自定义地址可在后续步骤配置）",
     ],
-    shouldShow: async ({ cfg, accountId }) => {
+    shouldShow: async ({ cfg, accountId }: { cfg: any; accountId: any }) => {
       const account = resolveBajoseekAccount(cfg, accountId);
       return !Boolean(account.botId && account.token);
     },
@@ -64,7 +59,7 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
   /** Shortcut when env vars are detected — skip manual entry. */
   envShortcut: {
     prompt: "Detected BAJOSEEK_BOT_ID and BAJOSEEK_TOKEN in environment. Use them?（检测到环境变量，是否使用？）",
-    isAvailable: ({ cfg, accountId }) => {
+    isAvailable: ({ cfg, accountId }: { cfg: any; accountId: any }) => {
       if (accountId !== DEFAULT_ACCOUNT_ID) return false;
       const envBotId = process.env.BAJOSEEK_BOT_ID?.trim();
       const envToken = process.env.BAJOSEEK_TOKEN?.trim();
@@ -72,7 +67,7 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
       const account = resolveBajoseekAccount(cfg, accountId);
       return !Boolean(account.config.botId && account.config.token);
     },
-    apply: ({ cfg, accountId }) => {
+    apply: ({ cfg, accountId }: { cfg: any; accountId: any }) => {
       return {
         ...cfg,
         channels: {
@@ -100,7 +95,7 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
    *   3. WebSocket URL — optional custom
    *   4. Block streaming — enable/disable
    */
-  finalize: async ({ cfg, accountId, prompter }) => {
+  finalize: async ({ cfg, accountId, prompter }: { cfg: any; accountId: any; prompter: any }) => {
     let next = cfg;
     const resolvedAccount = resolveBajoseekAccount(next, accountId);
     const hasConfigBotId = Boolean(resolvedAccount.config.botId);
@@ -120,8 +115,8 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
       keepPrompt: "Bajoseek BotID already configured. Keep it?（BotID 已配置，是否保留？）",
       inputPrompt: "Enter Bajoseek BotID（请输入 Bajoseek BotID）",
       preferredEnvVar: "BAJOSEEK_BOT_ID",
-      applyUseEnv: async (currentCfg) => currentCfg,
-      applySet: async (currentCfg, value) =>
+      applyUseEnv: async (currentCfg: any) => currentCfg,
+      applySet: async (currentCfg: any, value: any) =>
         applyBotIdToConfig(currentCfg, accountId, String(value).trim()),
     });
     next = botIdStep.cfg;
@@ -140,8 +135,8 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
       keepPrompt: "Bajoseek token already configured. Keep it?（Token 已配置，是否保留？）",
       inputPrompt: "Enter Bajoseek Token（请输入 Bajoseek Token）",
       preferredEnvVar: "BAJOSEEK_TOKEN",
-      applyUseEnv: async (currentCfg) => currentCfg,
-      applySet: async (currentCfg, value) =>
+      applyUseEnv: async (currentCfg: any) => currentCfg,
+      applySet: async (currentCfg: any, value: any) =>
         applyTokenToConfig(currentCfg, accountId, String(value).trim()),
     });
     next = tokenStep.cfg;
@@ -169,6 +164,14 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
           }),
         ).trim();
         next = applyWsUrlToConfig(next, accountId, wsUrl);
+
+        // ws:// 安全警告
+        if (wsUrl.startsWith("ws://")) {
+          await prompter.note(
+            "WARNING: Using unencrypted ws:// — credentials will be transmitted in plaintext. Use wss:// in production.（警告：使用了未加密的 ws:// 连接，凭据将以明文传输。生产环境请使用 wss://）",
+            "Security Warning（安全警告）",
+          );
+        }
       }
 
       // ── Step 4: Block streaming ──
@@ -177,6 +180,48 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
         initialValue: true,
       });
       next = applyBlockStreamingToConfig(next, accountId, blockStreaming);
+    }
+
+    // ── Step 5: Validate connection ──
+    // 校验 botId 和 token 是否能成功连接到 Bajoseek 服务器。
+    const finalAccount = resolveBajoseekAccount(next, accountId);
+    if (finalAccount.botId && finalAccount.token) {
+      let validated = false;
+      while (!validated) {
+        const result = await testBajoseekConnection({
+          botId: finalAccount.botId,
+          token: finalAccount.token,
+          wsUrl: finalAccount.wsUrl,
+        });
+
+        if (result.ok) {
+          await prompter.note(
+            "Connection test passed — botId and token are valid（连接测试通过 —— botId 和 token 有效）",
+            "Bajoseek Validation（凭据校验）",
+          );
+          validated = true;
+        } else {
+          await prompter.note(
+            `Connection test failed: ${result.error}\n（连接测试失败，请检查配置）`,
+            "Bajoseek Validation Failed（凭据校验失败）",
+          );
+          const retry = await prompter.confirm({
+            message: "Retry with different credentials? Select 'No' to save config anyway（是否重新输入凭据？选否则保留当前配置）",
+            initialValue: true,
+          });
+          if (!retry) {
+            validated = true; // User chose to skip — save config as-is.
+          } else {
+            // Re-enter botId and token by returning to finalize (recursive self-call is complex, just break and let user re-run setup).
+            // 简单处理：提示用户重新运行 setup 以修改凭据。
+            await prompter.note(
+              "Please re-run the setup wizard to update your credentials（请重新运行 setup 向导以更新凭据）",
+              "Hint（提示）",
+            );
+            validated = true;
+          }
+        }
+      }
     }
 
     return { cfg: next };

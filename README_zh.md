@@ -17,18 +17,20 @@
 
 - **实时 WebSocket 通信** — OpenClaw AI 与 Bajoseek 用户之间的双向消息通信
 - **分块流式回复** — 长回复渐进式分块推送，提升响应体验
-- **自动重连** — 指数退避重连机制（1s → 2s → 5s → 10s → 30s → 60s）
+- **自动重连** — 指数退避重连机制（1s -> 2s -> 5s -> 10s -> 30s -> 60s）
 - **按用户隔离的消息队列** — 每用户独立队列（单用户上限 20 条消息，最多 10 个用户并发处理）
 - **心跳保活** — 每 30 秒发送 ping，保持连接活跃
 - **多账户支持** — 单个 OpenClaw 实例运行多个 Bajoseek 机器人账户
-- **三级 Token 回退** — 配置文件 → 文件读取 → 环境变量
+- **三级 Token 回退** — 配置文件 -> 文件读取 -> 环境变量
+- **连接校验** — 配置向导在保存前自动验证 botId 和 token 是否有效
+- **入站消息限制** — 超过 100,000 字符的消息自动截断
 
 ## 快速开始
 
 ### 安装
 
 ```bash
-npm install @bajoseek/openclaw-bajoseek
+pnpm add @bajoseek/openclaw-bajoseek
 ```
 
 ### 配置
@@ -52,7 +54,13 @@ channels:
 
 ### 交互式配置
 
-运行 OpenClaw 的 onboard 向导，按提示输入 BotID、Token，可选配置 WebSocket 地址和分块流式回复。
+运行 OpenClaw 的 onboard 向导，按步骤完成配置：
+
+1. **BotID** — 手动输入或使用 `BAJOSEEK_BOT_ID` 环境变量
+2. **Token** — 手动输入或使用 `BAJOSEEK_TOKEN` 环境变量
+3. **WebSocket 地址** — 可选自定义地址（默认：`wss://ws.bajoseek.com`）
+4. **分块流式回复** — 启用/禁用分块推送
+5. **连接校验** — 自动测试凭据是否能连接到服务器
 
 ## 配置说明
 
@@ -96,7 +104,7 @@ channels:
 
 ## WebSocket 协议
 
-### 入站消息（服务端 → 插件）
+### 入站消息（服务端 -> 插件）
 
 | 类型 | 字段 | 说明 |
 |---|---|---|
@@ -104,7 +112,7 @@ channels:
 | `pong` | — | 心跳响应 |
 | `error` | `code`, `message` | 服务端错误通知 |
 
-### 出站消息（插件 → 服务端）
+### 出站消息（插件 -> 服务端）
 
 | 类型 | 字段 | 说明 |
 |---|---|---|
@@ -143,9 +151,12 @@ bajoseek:user:<userId>
 ### 构建
 
 ```bash
-npm run build    # 编译 TypeScript
-npm run dev      # 监听模式
+pnpm install     # 安装依赖
+pnpm run build   # 编译 TypeScript
+pnpm run dev     # 监听模式
 ```
+
+> **注意：** `openclaw/plugin-sdk` 是 peer dependency。本地没有安装 OpenClaw 时构建会出现 SDK 相关的类型错误，这是正常的——`tsc || true` 确保仍然会生成 JS 输出。
 
 ### 项目结构
 
@@ -156,7 +167,7 @@ src/
   channel.ts          # ChannelPlugin 实现（动态加载 setupWizard / onboarding）
   gateway.ts          # WebSocket 连接与消息分发
   outbound.ts         # 消息发送工具
-  config.ts           # 账户配置解析（三级 Token 回退）
+  config.ts           # 账户配置解析（三级 Token 回退）与连接校验
   runtime.ts          # 插件运行时单例
   onboarding.ts       # 旧版 ChannelOnboardingAdapter（OpenClaw 3.13）
   setup-surface.ts    # 新版交互式 ChannelSetupWizard（OpenClaw 3.24+）

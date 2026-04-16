@@ -101,13 +101,6 @@ export interface PongMessage {
   type: "pong";
 }
 
-/** Stop generation request from client. */
-// 客户端请求停止生成
-export interface StopMessage {
-  type: "stop";
-  conversationId: string;
-}
-
 /** Union of all protocol messages. */
 export type BajoseekProtocolMessage =
   | InboundUserMessage
@@ -116,5 +109,4 @@ export type BajoseekProtocolMessage =
   | ReplyMessage
   | ErrorMessage
   | PingMessage
-  | PongMessage
-  | StopMessage;
+  | PongMessage;

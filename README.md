@@ -17,18 +17,20 @@ The plugin detects the OpenClaw version at runtime and automatically loads the a
 
 - **Real-time WebSocket Communication** — Bidirectional messaging between OpenClaw AI agents and Bajoseek users
 - **Block Streaming** — Progressive chunked response delivery for better responsiveness on long replies
-- **Auto-Reconnect** — Exponential backoff reconnection (1s → 2s → 5s → 10s → 30s → 60s)
+- **Auto-Reconnect** — Exponential backoff reconnection (1s -> 2s -> 5s -> 10s -> 30s -> 60s)
 - **Per-User Message Queue** — Isolated queues per user (max 20 messages/user, 10 concurrent users)
 - **Heartbeat** — Periodic ping every 30 seconds to keep connections alive
 - **Multi-Account** — Run multiple Bajoseek bot accounts from a single OpenClaw instance
-- **3-Level Token Fallback** — Config file → token file → environment variable
+- **3-Level Token Fallback** — Config file -> token file -> environment variable
+- **Connection Validation** — Setup wizard verifies botId and token against the server before saving
+- **Inbound Message Limit** — Messages exceeding 100,000 characters are automatically truncated
 
 ## Quick Start
 
 ### Install
 
 ```bash
-npm install @bajoseek/openclaw-bajoseek
+pnpm add @bajoseek/openclaw-bajoseek
 ```
 
 ### Configure
@@ -52,7 +54,13 @@ channels:
 
 ### Interactive Setup
 
-Run the OpenClaw onboard wizard — it will guide you through BotID, Token, WebSocket URL, and block streaming options.
+Run the OpenClaw onboard wizard — it will guide you through:
+
+1. **BotID** — enter manually or use `BAJOSEEK_BOT_ID` env var
+2. **Token** — enter manually or use `BAJOSEEK_TOKEN` env var
+3. **WebSocket URL** — optional custom URL (default: `wss://ws.bajoseek.com`)
+4. **Block Streaming** — enable/disable chunked replies
+5. **Connection Validation** — automatically tests credentials against the server
 
 ## Configuration
 
@@ -96,7 +104,7 @@ channels:
 
 ## WebSocket Protocol
 
-### Inbound (Server → Plugin)
+### Inbound (Server -> Plugin)
 
 | Type | Fields | Description |
 |---|---|---|
@@ -104,7 +112,7 @@ channels:
 | `pong` | — | Heartbeat response |
 | `error` | `code`, `message` | Server error |
 
-### Outbound (Plugin → Server)
+### Outbound (Plugin -> Server)
 
 | Type | Fields | Description |
 |---|---|---|
@@ -143,9 +151,12 @@ Accepted inputs: `bajoseek:user:alice`, `user:alice`, or `alice`.
 ### Build
 
 ```bash
-npm run build    # Compile TypeScript
-npm run dev      # Watch mode
+pnpm install     # Install dependencies
+pnpm run build   # Compile TypeScript
+pnpm run dev     # Watch mode
 ```
+
+> **Note:** `openclaw/plugin-sdk` is a peer dependency. Type errors from the SDK are expected during local builds without OpenClaw installed — `tsc || true` ensures JS output is still generated.
 
 ### Project Structure
 
@@ -156,7 +167,7 @@ src/
   channel.ts          # ChannelPlugin implementation (dynamically loads setupWizard / onboarding)
   gateway.ts          # WebSocket connection & message dispatch
   outbound.ts         # Message sending utilities
-  config.ts           # Account config resolution (3-level token fallback)
+  config.ts           # Account config resolution (3-level token fallback) & connection validation
   runtime.ts          # Plugin runtime singleton
   onboarding.ts       # Legacy ChannelOnboardingAdapter (OpenClaw 3.13)
   setup-surface.ts    # Interactive ChannelSetupWizard (OpenClaw 3.24+)

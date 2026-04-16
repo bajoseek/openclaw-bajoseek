@@ -8,6 +8,7 @@
  * Only available on new OpenClaw (3.24+). For old versions, the `setup` adapter
  * on the ChannelPlugin object in channel.ts handles this path directly.
  */
+// @ts-ignore — peer dependency, not available at build time
 import {createPatchedAccountSetupAdapter, DEFAULT_ACCOUNT_ID,} from "openclaw/plugin-sdk/setup";
 
 const channel = "bajoseek" as const;
@@ -28,7 +29,7 @@ export const bajoseekSetupAdapter = createPatchedAccountSetupAdapter({
   /**
    * Validate CLI input before applying.
    */
-  validateInput: ({ accountId, input }) => {
+  validateInput: ({ accountId, input }: { accountId: any; input: any }) => {
     // Env vars are only supported for the default account.
     if (input.useEnv && accountId !== DEFAULT_ACCOUNT_ID) {
       return "BAJOSEEK_BOT_ID / BAJOSEEK_TOKEN can only be used for the default account.";
@@ -47,7 +48,7 @@ export const bajoseekSetupAdapter = createPatchedAccountSetupAdapter({
    *
    * When `--use-env` is specified, returns an empty patch (tokens come from env).
    */
-  buildPatch: (input) =>
+  buildPatch: (input: any) =>
     input.useEnv
       ? {}
       : {
