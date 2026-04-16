@@ -184,10 +184,14 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
 
     // ── Step 5: Validate connection ──
     // 校验 botId 和 token 是否能成功连接到 Bajoseek 服务器。
-    const finalAccount = resolveBajoseekAccount(next, accountId);
-    if (finalAccount.botId && finalAccount.token) {
-      let validated = false;
-      while (!validated) {
+    // 校验失败时允许用户重新输入 BotID 和 Token，循环直到通过或放弃。
+    try {
+      let finalAccount = resolveBajoseekAccount(next, accountId);
+      while (finalAccount.botId && finalAccount.token) {
+        await prompter.note(
+          "Testing connection to Bajoseek server...（正在测试与 Bajoseek 服务器的连接...）",
+          "Bajoseek Validation（凭据校验）",
+        );
         const result = await testBajoseekConnection({
           botId: finalAccount.botId,
           token: finalAccount.token,
@@ -199,29 +203,44 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
             "Connection test passed — botId and token are valid（连接测试通过 —— botId 和 token 有效）",
             "Bajoseek Validation（凭据校验）",
           );
-          validated = true;
-        } else {
-          await prompter.note(
-            `Connection test failed: ${result.error}\n（连接测试失败，请检查配置）`,
-            "Bajoseek Validation Failed（凭据校验失败）",
-          );
-          const retry = await prompter.confirm({
-            message: "Retry with different credentials? Select 'No' to save config anyway（是否重新输入凭据？选否则保留当前配置）",
-            initialValue: true,
-          });
-          if (!retry) {
-            validated = true; // User chose to skip — save config as-is.
-          } else {
-            // Re-enter botId and token by returning to finalize (recursive self-call is complex, just break and let user re-run setup).
-            // 简单处理：提示用户重新运行 setup 以修改凭据。
-            await prompter.note(
-              "Please re-run the setup wizard to update your credentials（请重新运行 setup 向导以更新凭据）",
-              "Hint（提示）",
-            );
-            validated = true;
-          }
+          break;
         }
+
+        await prompter.note(
+          `Connection test failed: ${result.error}\n（连接测试失败，请检查配置）`,
+          "Bajoseek Validation Failed（凭据校验失败）",
+        );
+        const retry = await prompter.confirm({
+          message: "Re-enter BotID and Token? Select 'No' to save config anyway（是否重新输入 BotID 和 Token？选否则保留当前配置）",
+          initialValue: true,
+        });
+        if (!retry) break;
+
+        // Re-enter BotID.
+        const newBotId = String(
+          await prompter.text({
+            message: "Enter Bajoseek BotID（请输入 Bajoseek BotID）",
+            validate: (v: string) => (v?.trim() ? undefined : "BotID cannot be empty（BotID 不能为空）"),
+          }),
+        ).trim();
+        next = applyBotIdToConfig(next, accountId, newBotId);
+
+        // Re-enter Token.
+        const newToken = String(
+          await prompter.text({
+            message: "Enter Bajoseek Token（请输入 Bajoseek Token）",
+            validate: (v: string) => (v?.trim() ? undefined : "Token cannot be empty（Token 不能为空）"),
+          }),
+        ).trim();
+        next = applyTokenToConfig(next, accountId, newToken);
+
+        finalAccount = resolveBajoseekAccount(next, accountId);
       }
+    } catch (err) {
+      await prompter.note(
+        `Connection validation skipped due to error: ${err}（连接校验因异常跳过）`,
+        "Warning（警告）",
+      );
     }
 
     return { cfg: next };

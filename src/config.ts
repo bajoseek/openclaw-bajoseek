@@ -261,16 +261,21 @@ export function testBajoseekConnection(opts: {
       settle({ ok: false, error: "Connection timed out（连接超时）" });
     }, TEST_CONNECTION_TIMEOUT);
 
-    const ws = new WebSocket(endpoint, {
-      headers: {
-        "X-Bot-Id": botId,
-        "Authorization": `Bearer ${token}`,
-      },
-    });
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(endpoint, {
+        headers: {
+          "X-Bot-Id": botId,
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      resolve({ ok: false, error: `Failed to create WebSocket: ${err}（创建连接失败）` });
+      return;
+    }
 
     ws.on("open", () => {
-      // Handshake succeeded — credentials are valid.
-      // 握手成功 —— 凭据有效。
       settle({ ok: true });
     });
 
@@ -286,5 +291,8 @@ export function testBajoseekConnection(opts: {
     ws.on("error", (err) => {
       settle({ ok: false, error: `Connection error: ${err.message}（连接错误）` });
     });
+
+    // Prevent unhandled 'close' event after error+settle.
+    ws.on("close", () => { /* already settled, no-op */ });
   });
 }
