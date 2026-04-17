@@ -8,9 +8,9 @@
  *
  * All user-facing prompts are bilingual: English / Chinese.
  */
-// @ts-ignore — peer dependency, not available at build time
-import { type ChannelSetupWizard, createStandardChannelSetupStatus, DEFAULT_ACCOUNT_ID, type OpenClawConfig, runSingleChannelSecretStep } from "openclaw/plugin-sdk/setup";
-import {listBajoseekAccountIds, resolveBajoseekAccount, testBajoseekConnection} from "./config.js";
+import type {OpenClawConfig} from "openclaw/plugin-sdk";
+
+import {DEFAULT_ACCOUNT_ID, listBajoseekAccountIds, resolveBajoseekAccount, testBajoseekConnection} from "./config.js";
 
 const channel = "bajoseek" as const;
 
@@ -20,25 +20,25 @@ const DEFAULT_WS_URL = "wss://ws.bajoseek.com";
 /**
  * The setup wizard shown during `openclaw onboard` or initial setup.
  */
-export const bajoseekSetupWizard: ChannelSetupWizard = {
+export const bajoseekSetupWizard: any = {
   channel,
 
-  /** Status check — determines "configured" vs "needs setup" in the UI. */
-  status: createStandardChannelSetupStatus({
-    channelLabel: "Bajoseek",
+  status: {
     configuredLabel: "Configured（已配置）",
     unconfiguredLabel: "Requires BotID and Token（需要 BotID 和 Token）",
     configuredHint: "Configured（已配置）",
     unconfiguredHint: "Connect to Bajoseek App via WebSocket（通过 WebSocket 连接 Bajoseek App）",
     configuredScore: 1,
     unconfiguredScore: 20,
-    includeStatusLine: true,
     resolveConfigured: ({ cfg }: { cfg: any }) =>
       listBajoseekAccountIds(cfg).some((accountId) => {
         const account = resolveBajoseekAccount(cfg, accountId);
         return Boolean(account.botId && account.token);
       }),
-  }),
+    resolveStatusLines: async ({ configured }: { cfg: any; accountId?: string; configured: boolean }) => [
+      `Bajoseek: ${configured ? "Configured（已配置）" : "Requires BotID and Token（需要 BotID 和 Token）"}`,
+    ],
+  },
 
   /** Intro note shown when the channel is not yet configured. */
   introNote: {
@@ -96,6 +96,8 @@ export const bajoseekSetupWizard: ChannelSetupWizard = {
    *   4. Block streaming — enable/disable
    */
   finalize: async ({ cfg, accountId, prompter }: { cfg: any; accountId: any; prompter: any }) => {
+    // @ts-ignore — peer dependency, resolved at runtime when OpenClaw invokes the wizard
+    const { runSingleChannelSecretStep } = await import("openclaw/plugin-sdk/setup");
     let next = cfg;
     const resolvedAccount = resolveBajoseekAccount(next, accountId);
     const hasConfigBotId = Boolean(resolvedAccount.config.botId);

@@ -1,6 +1,6 @@
 {
   "name": "@bajoseek/openclaw-bajoseek",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Bajoseek channel plugin for OpenClaw — connect AI assistants to Bajoseek via WebSocket",
   "type": "module",
   "main": "dist/index.js",

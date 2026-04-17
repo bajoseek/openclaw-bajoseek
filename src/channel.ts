@@ -378,14 +378,10 @@ export const bajoseekPlugin: any = {
  *  `openclaw onboard`, well after plugin loading completes.
  * ════════════════════════════════════════════════════════════ */
 
-// New version: setupWizard (from openclaw/plugin-sdk/setup)
-import("./setup-surface.js")
-  .then(({ bajoseekSetupWizard }) => {
-    bajoseekPlugin.setupWizard = bajoseekSetupWizard;
-  })
-  .catch(() => {
-    // `openclaw/plugin-sdk/setup` not available (old version) — skip.
-  });
+import {bajoseekSetupWizard} from "./setup-surface.js";
+
+// New version: setupWizard (synchronous — must be available at plugin load time)
+bajoseekPlugin.setupWizard = bajoseekSetupWizard;
 
 // Old version: onboarding (local ChannelOnboardingAdapter)
 import("./onboarding.js")
